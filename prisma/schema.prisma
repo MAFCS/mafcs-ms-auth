@@ -13,3 +13,272 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum IamActionsEnum {
+  create
+  read
+  update
+  delete
+  manage
+}
+
+model app_settings {
+  id          String    @id @default(uuid()) @db.Uuid
+  key         String    @unique @db.VarChar(45)
+  value       String    @db.VarChar(255)
+  value_type  String    @db.VarChar(45)
+  description String?    @db.VarChar(255)
+  start_at    DateTime
+  deleted_at  DateTime?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@unique([key, start_at], map: "unique_app_settings_key_start_at")
+  @@index([key], map: "app_settings_key_index")
+}
+
+model action {
+  id         String         @id @default(uuid()) @db.Uuid
+  name       IamActionsEnum @unique
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+  deleted_at DateTime?
+
+  policy policy[]
+
+  @@index([name], map: "action_name_index")
+}
+
+model resource {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique @db.VarChar(45)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  policy policy[]
+
+  @@index([name], map: "resource_name_index")
+}
+
+model policy {
+  id          String @id @default(uuid()) @db.Uuid
+  name        String @unique @db.VarChar(45)
+  action_id   String @db.Uuid
+  resource_id String @db.Uuid
+
+  deleted_at DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  role_policy role_policy[]
+  action      action        @relation(fields: [action_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_policy_action1")
+  resource    resource      @relation(fields: [resource_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_policy_resource1")
+
+  @@unique([resource_id, action_id], map: "unique_resource_action")
+  @@index([name], map: "policy_name_index")
+  @@index([action_id, resource_id], map: "policy_action_id_resource_id_index")
+}
+
+model role {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique @db.VarChar(45)
+  deleted_at DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  role_policy role_policy[]
+  user_role   user_role[]
+
+  @@index([name], map: "role_name_index")
+}
+
+model role_policy {
+  id         String    @id @default(uuid()) @db.Uuid
+  role_id    String    @db.Uuid
+  policy_id  String    @db.Uuid
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  policy policy @relation(fields: [policy_id], references: [id], onDelete: NoAction)
+  role   role   @relation(fields: [role_id], references: [id], onDelete: NoAction)
+
+  @@unique([role_id, policy_id], map: "unique_role_policy")
+}
+
+model user_role {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  role_id    String   @db.Uuid
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  role role @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_role_role1")
+  user user @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_role_user1")
+
+  @@unique([user_id, role_id], map: "unique_user_role")
+}
+
+model user {
+  id              String    @id @default(uuid()) @db.Uuid
+  username        String    @unique @db.VarChar(120)
+  password        String    @db.VarChar(255)
+  temp_password   String?   @db.VarChar(255)
+  lock_until      DateTime?
+  failed_attempts Int       @default(0)
+  is_first_login  Boolean   @default(true)
+  deleted_reason  String?   @db.VarChar(500)
+  fcm_token       String?   @db.VarChar(255)
+  deleted_at      DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  user_role              user_role[]
+  user_session           user_session[]
+  user_notification_type user_notification_type[]
+  user_person            user_person[]
+
+  @@index([username], map: "user_username_index")
+  @@index([id], map: "user_id_index")
+  @@index([fcm_token], map: "user_fcm_token_index")
+}
+
+model user_session {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  jwt_token  String    @unique
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  user user @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_session_user1")
+
+  @@unique([user_id, jwt_token], map: "user_session_user_id_jwt_token_unique")
+  @@index([user_id], map: "user_session_user_id_index")
+}
+
+model notification_type {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique @db.VarChar(45)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  user_notification_type user_notification_type[]
+
+  @@index([name], map: "notification_type_name_index")
+}
+
+model user_notification_type {
+  id                   String    @id @default(uuid()) @db.Uuid
+  user_id              String    @db.Uuid
+  notification_type_id String    @db.Uuid
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+  deleted_at           DateTime?
+
+  notification_type notification_type @relation(fields: [notification_type_id], references: [id], onDelete: NoAction)
+  user              user              @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_notification_type_user1")
+
+  @@unique([user_id, notification_type_id], map: "unique_user_notification_type")
+  @@index([user_id], map: "user_notification_type_user_id_index")
+  @@index([notification_type_id], map: "user_notification_type_notification_type_id_index")
+}
+
+model country {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @db.VarChar(60)
+  short_name String    @unique @db.VarChar(4)
+  phone_code Int
+  currency   String    @db.VarChar(3)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  city   city[]
+  person person[]
+
+  @@index([short_name], map: "country_short_name_index")
+  @@index([name], map: "country_name_index")
+}
+
+model city {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @db.VarChar(60)
+  country_id String    @db.Uuid
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  country country  @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_city_country1")
+  person  person[]
+
+  @@index([name], map: "city_name_index")
+  @@index([country_id], map: "city_country_id_index")
+}
+
+model document_type {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique @db.VarChar(45)
+  short_name String    @unique @db.VarChar(3)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  person     person[]
+
+  @@index([name], map: "document_type_name_index")
+}
+
+model person_type {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique @db.VarChar(45)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  person person[]
+
+  @@index([name], map: "person_type_name_index")
+}
+
+model person {
+  id               String    @id @default(uuid()) @db.Uuid
+  first_name       String    @db.VarChar(50)
+  last_name        String    @db.VarChar(50)
+  document_number  String    @db.VarChar(11)
+  email            String?   @db.VarChar(40)
+  phone            String    @db.VarChar(15)
+  image_url        String?   @db.VarChar(255)
+  person_type_id   String    @db.Uuid
+  country_id       String    @db.Uuid
+  city_id          String    @db.Uuid
+  document_type_id String    @db.Uuid
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  deleted_at       DateTime?
+
+  city          city          @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_person_city1")
+  country       country       @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_person_country1")
+  document_type document_type @relation(fields: [document_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_person_document_type1")
+  person_type   person_type   @relation(fields: [person_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_person_person_type1")
+  user_person   user_person[]
+
+  @@unique([email], map: "unique_email")
+  @@unique([document_number], map: "unique_document_number")
+}
+
+model user_person {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  person_id  String    @db.Uuid
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  person person @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_person_person1")
+  user   user   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_person_user1")
+
+  @@unique([user_id, person_id], map: "unique_user_person")
+}
